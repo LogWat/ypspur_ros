@@ -95,10 +95,11 @@ private:
   std::string ypspur_bin_;
   std::map<std::string, std::string> frames_;
   std::map<std::string, double> params_;
+  double cnst_x, cnst_y, cnst_yaw; //苦肉の策用
+  
   int key_;
   bool simulate_;
   bool wait_convergence_of_joint_trajectory_angle_vel_;
-
   double tf_time_offset_;
 
   pid_t pid_;
@@ -190,6 +191,17 @@ private:
         break;
     }
   }
+
+  void cbResetOdometry(const std_msgs::Bool::ConstPtr& msg)
+  {
+    if(msg->data) //true
+    {
+        // double test_x, test_y, test_th;
+      int ret = YP::YPSpur_get_pos(YP::CS_GL,&cnst_x, &cnst_y,&cnst_yaw); //苦肉の策です。
+      ROS_INFO("odom reset return->[%d]", ret);
+    }
+  }
+
   void cbCmdVel(const geometry_msgs::Twist::ConstPtr& msg)
   {
     cmd_vel_ = msg;
@@ -635,6 +647,9 @@ public:
     subs_["control_mode"] = compat::subscribe(
         nh_, "control_mode",
         pnh_, "control_mode", 1, &YpspurRosNode::cbControlMode, this);
+    subs_["reset_odometry"] = compat::subscribe(
+        nh_, "reset_odometry",
+        pnh_, "reset_odometry", 1, &YpspurRosNode::cbResetOdometry, this);
     control_mode_ = ypspur_ros::ControlMode::VELOCITY;
 
     pubs_["diag"] = nh_.advertise<diagnostic_msgs::DiagnosticArray>(
@@ -863,10 +878,10 @@ public:
         if (!avoid_publishing_duplicated_odom_ || (current_stamp > previous_odom_stamp_))
         {
           odom.header.stamp = current_stamp;
-          odom.pose.pose.position.x = x;
-          odom.pose.pose.position.y = y;
+          odom.pose.pose.position.x = x-cnst_x; //リセットモード実装のために苦肉の策です。ypspur_set_pos()がうまく使えませんでした。
+          odom.pose.pose.position.y = y-cnst_y;
           odom.pose.pose.position.z = 0;
-          odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(z_axis_, yaw));
+          odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(z_axis_, yaw-cnst_yaw));
           odom.twist.twist.linear.x = v;
           odom.twist.twist.linear.y = 0;
           odom.twist.twist.angular.z = w;
